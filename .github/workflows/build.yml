@@ -1,0 +1,46 @@
+name: Build APK
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show repo files
+        run: ls -la
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack project from zip
+        run: |
+          ZIP=$(find . -name '*.zip' -not -path './.git/*' | head -1)
+          if [ -z "$ZIP" ]; then echo "Нет zip в репозитории"; exit 1; fi
+          echo "Using $ZIP"
+          unzip -o "$ZIP" -d /tmp/src
+          mkdir -p app/src/main/java/com/neighborvn app/src/main/assets
+          cp /tmp/src/settings.gradle /tmp/src/build.gradle /tmp/src/gradle.properties .
+          cp /tmp/src/app.gradle app/build.gradle
+          cp /tmp/src/AndroidManifest.xml app/src/main/AndroidManifest.xml
+          cp /tmp/src/*.java app/src/main/java/com/neighborvn/
+          # картинки и видео из zip
+          for f in /tmp/src/*.png /tmp/src/*.jpg /tmp/src/*.jpeg /tmp/src/*.webp /tmp/src/*.gif /tmp/src/*.mp4 /tmp/src/*.ttf /tmp/src/*.otf; do [ -f "$f" ] && cp "$f" app/src/main/assets/; done
+          # картинки и видео, загруженные прямо в корень репозитория (они главнее)
+          for f in ./*.png ./*.jpg ./*.jpeg ./*.webp ./*.gif ./*.mp4 ./*.ttf ./*.otf; do [ -f "$f" ] && cp "$f" app/src/main/assets/; done
+          ls -la app/src/main/assets
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: Build
+        run: gradle assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neighbor-vn-apk
+          path: app/build/outputs/apk/debug/*.apk
