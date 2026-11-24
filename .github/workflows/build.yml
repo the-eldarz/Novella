@@ -1,0 +1,52 @@
+name: Build APK
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show repo files
+        run: ls -la
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack project from zip
+        run: |
+          ZIP=$(find . -name 'milf-manor-flat.zip' -not -path './.git/*' | head -1)
+          if [ -z "$ZIP" ]; then echo "Нет zip в репозитории"; exit 1; fi
+          echo "Using $ZIP"
+          unzip -o "$ZIP" -d /tmp/src
+          mkdir -p app/src/main/java/com/neighborvn app/src/main/assets
+          cp /tmp/src/settings.gradle /tmp/src/build.gradle /tmp/src/gradle.properties .
+          cp /tmp/src/app.gradle app/build.gradle
+          cp /tmp/src/AndroidManifest.xml app/src/main/AndroidManifest.xml
+          cp /tmp/src/*.java app/src/main/java/com/neighborvn/
+          # картинки, видео и звук из zip
+          for f in /tmp/src/*.png /tmp/src/*.jpg /tmp/src/*.jpeg /tmp/src/*.webp /tmp/src/*.gif /tmp/src/*.mp4 /tmp/src/*.mp3 /tmp/src/*.ogg /tmp/src/*.m4a /tmp/src/*.wav /tmp/src/*.ttf /tmp/src/*.otf /tmp/src/*.svg; do [ -f "$f" ] && cp "$f" app/src/main/assets/; done
+          # картинки, видео и звук из репозитория: из корня и из любых папок, в любом регистре (имена приводятся к маленьким буквам); они главнее
+          find . -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.mp4' -o -iname '*.mp3' -o -iname '*.ogg' -o -iname '*.m4a' -o -iname '*.wav' -o -iname '*.ttf' -o -iname '*.otf' -o -iname '*.svg' \) -not -path './.git/*' -not -path './.github/*' -not -path './app/*' | while read -r f; do b=$(basename "$f" | tr 'A-Z' 'a-z'); cp "$f" "app/src/main/assets/$b"; done
+          # иконка приложения и ключ подписи (файлы из корня репозитория главнее)
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          ICON=./icon.png; [ -f "$ICON" ] || ICON=/tmp/src/icon.png
+          cp "$ICON" app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          KS=./milf.keystore; [ -f "$KS" ] || KS=/tmp/src/milf.keystore
+          cp "$KS" app/milf.keystore
+          ls -la app/src/main/assets app
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: Build
+        run: gradle assembleDebug --stacktrace -PverCode=${{ github.run_number }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: milf-manor-v1.0.${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
